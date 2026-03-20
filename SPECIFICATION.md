@@ -1,15 +1,15 @@
-# MyPico - Terminal Text Editor Specification
+# Aipic - Terminal Text Editor Specification
 
 A lightweight terminal text editor inspired by GNU Pico/Nano, built in Python using the `curses` library.
 
 ## 1. Overview
 
-MyPico is a simple, user-friendly terminal text editor. Like Pico, it prioritizes ease of use over advanced features, displaying available commands on-screen at all times.
+Aipic is a simple, user-friendly terminal text editor. Like Pico, it prioritizes ease of use over advanced features, displaying available commands on-screen at all times.
 
 ## 2. Core Features
 
 ### 2.1 File Operations
-- Open a file from the command line: `mypico [filename]`
+- Open a file from the command line: `aipic [filename]`
 - Open a new (unnamed) buffer if no filename is given
 - Save file (Write Out) with `Ctrl+O`
   - Prompt for filename if the buffer has no name
@@ -48,7 +48,7 @@ MyPico is a simple, user-friendly terminal text editor. Like Pico, it prioritize
 
 ```
 +----------------------------------------------------------+
-|  MyPico 1.0          filename.txt        Modified         |  <- Title bar
+|  Aipic 1.0          filename.txt        Modified         |  <- Title bar
 |                                                          |
 |  (file content area)                                     |
 |                                                          |
@@ -119,7 +119,7 @@ MyPico is a simple, user-friendly terminal text editor. Like Pico, it prioritize
 ## 5. Command-Line Interface
 
 ```
-usage: mypico [filename]
+usage: aipic [filename]
 
 positional arguments:
   filename    File to open (optional; opens empty buffer if omitted)

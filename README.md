@@ -1,4 +1,4 @@
-# MyPico
+# Aipic
 
 A lightweight terminal text editor inspired by GNU Pico/Nano, built in Python using the `curses` library. No external dependencies.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MyPico - A lightweight terminal text editor inspired by Pico/Nano."""
+"""Aipic - A lightweight terminal text editor inspired by Pico/Nano."""
 
 import sys
 import curses

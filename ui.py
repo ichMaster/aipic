@@ -30,9 +30,11 @@ class UI:
     def setup_colors(self):
         curses.start_color()
         curses.use_default_colors()
-        curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)  # Title/status bar
-        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_CYAN)   # Shortcut bar
-        curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Shortcut keys
+        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Title/status bar
+        curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Shortcut bar
+        curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Shortcut keys
+        curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Content area
+        self.stdscr.bkgd(' ', curses.color_pair(4))
 
     def update_dimensions(self):
         self.height, self.width = self.stdscr.getmaxyx()
@@ -42,7 +44,7 @@ class UI:
         self.content_start_row = 1
 
     def draw_title_bar(self, filename, modified):
-        title_left = f" MyPico {VERSION}"
+        title_left = f" Aipic {VERSION}"
         title_center = filename or "[New Buffer]"
         title_right = " Modified " if modified else ""
 
