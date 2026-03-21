@@ -1,5 +1,7 @@
 import curses
 
+from . import markdown_renderer
+
 VERSION = "1.0"
 EXPLORER_WIDTH = 30
 TERMINAL_WIDTH = 80
@@ -36,6 +38,7 @@ class UI:
         curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Shortcut bar
         curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Shortcut keys
         curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Content area
+        markdown_renderer.setup_colors()
         self.stdscr.bkgd(' ', curses.color_pair(4))
 
     def update_dimensions(self, terminal_visible=True):
@@ -151,6 +154,32 @@ class UI:
                                         visible, self.content_width)
                 except curses.error:
                     pass
+
+    def draw_markdown_content(self, rendered_lines, scroll_row):
+        for i in range(self.content_height):
+            screen_row = self.content_start_row + i
+            line_idx = scroll_row + i
+
+            try:
+                clear_text = " " * max(0, self.content_width)
+                self.stdscr.addnstr(screen_row, self.content_start_col,
+                                    clear_text, self.content_width)
+            except curses.error:
+                pass
+
+            if line_idx < len(rendered_lines):
+                rl = rendered_lines[line_idx]
+                col = self.content_start_col
+                for text, attr, _ in rl.spans:
+                    remaining = self.content_width - (col - self.content_start_col)
+                    if remaining <= 0:
+                        break
+                    display = text[:remaining]
+                    try:
+                        self.stdscr.addnstr(screen_row, col, display, remaining, attr)
+                    except curses.error:
+                        pass
+                    col += len(display)
 
     def draw_terminal(self, terminal, focus):
         if not self.terminal_visible:

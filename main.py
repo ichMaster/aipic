@@ -3,7 +3,7 @@
 
 import sys
 import curses
-from editor import Editor
+from editor import Editor  # from editor/__init__.py
 
 
 def main(stdscr):

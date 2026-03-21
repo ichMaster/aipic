@@ -1,18 +1,19 @@
 import curses
 import os
 
-from buffer import Buffer
-from clipboard import Clipboard
-from search import Search
-from keybindings import get_command, CMD_MOVE_UP, CMD_MOVE_DOWN, CMD_MOVE_LEFT, CMD_MOVE_RIGHT
-from keybindings import CMD_HOME, CMD_END, CMD_PAGE_UP, CMD_PAGE_DOWN
-from keybindings import CMD_BACKSPACE, CMD_DELETE, CMD_ENTER, CMD_TAB
-from keybindings import CMD_SAVE, CMD_EXIT, CMD_SEARCH, CMD_CUT, CMD_PASTE
-from keybindings import CMD_REFRESH, CMD_RESIZE, CMD_INSERT, CMD_TOGGLE_EXPLORER
-from keybindings import CMD_TOGGLE_TERMINAL
-from explorer import FileExplorer
-from terminal import Terminal
-from ui import UI
+from .buffer import Buffer
+from .clipboard import Clipboard
+from .search import Search
+from .keybindings import get_command, CMD_MOVE_UP, CMD_MOVE_DOWN, CMD_MOVE_LEFT, CMD_MOVE_RIGHT
+from .keybindings import CMD_HOME, CMD_END, CMD_PAGE_UP, CMD_PAGE_DOWN
+from .keybindings import CMD_BACKSPACE, CMD_DELETE, CMD_ENTER, CMD_TAB
+from .keybindings import CMD_SAVE, CMD_EXIT, CMD_SEARCH, CMD_CUT, CMD_PASTE
+from .keybindings import CMD_REFRESH, CMD_RESIZE, CMD_INSERT, CMD_TOGGLE_EXPLORER
+from .keybindings import CMD_TOGGLE_TERMINAL, CMD_TOGGLE_MD_VIEW
+from .explorer import FileExplorer
+from .markdown_renderer import render_markdown
+from .terminal import Terminal
+from .ui import UI
 
 
 class Editor:
@@ -42,6 +43,11 @@ class Editor:
         self.scroll_col = 0
         self.status_message = ""
         self.running = True
+        self.md_view_mode = self._is_markdown()
+        self.md_rendered = None
+        self.md_scroll_row = 0
+        if self.md_view_mode:
+            self._render_markdown()
 
     def run(self):
         self.stdscr.keypad(True)
@@ -60,6 +66,12 @@ class Editor:
         finally:
             self.terminal.stop()
 
+    def _is_markdown(self):
+        return bool(self.filepath and self.filepath.lower().endswith(('.md', '.markdown')))
+
+    def _render_markdown(self):
+        self.md_rendered = render_markdown(self.buffer.lines)
+
     def _draw(self):
         self.stdscr.erase()
         self.ui.update_dimensions(terminal_visible=True)
@@ -67,16 +79,30 @@ class Editor:
         self._adjust_scroll()
         self.ui.draw_title_bar(self.filepath, self.buffer.modified)
         self.ui.draw_explorer(self.explorer, self.focus)
-        self.ui.draw_content(self.buffer, self.scroll_row, self.scroll_col,
-                             self.cursor_row, self.cursor_col)
+        if self.md_view_mode and self.md_rendered is not None:
+            self.ui.draw_markdown_content(self.md_rendered, self.md_scroll_row)
+            if self.focus == "editor":
+                curses.curs_set(0)
+        else:
+            if self.focus == "editor":
+                curses.curs_set(1)
+            self.ui.draw_content(self.buffer, self.scroll_row, self.scroll_col,
+                                 self.cursor_row, self.cursor_col)
         self.ui.draw_terminal(self.terminal, self.focus)
-        self.ui.draw_status_bar(self.status_message)
+        mode_indicator = " [VIEW] F5=Edit" if self.md_view_mode else ""
+        self.ui.draw_status_bar(self.status_message + mode_indicator if not self.status_message else self.status_message)
         self.ui.draw_shortcut_bar()
-        self.ui.position_cursor(self.focus, self.cursor_row, self.cursor_col,
-                                self.scroll_row, self.scroll_col,
-                                self.explorer.selected_index,
-                                self.explorer.scroll_offset,
-                                self.terminal)
+        if not self.md_view_mode:
+            self.ui.position_cursor(self.focus, self.cursor_row, self.cursor_col,
+                                    self.scroll_row, self.scroll_col,
+                                    self.explorer.selected_index,
+                                    self.explorer.scroll_offset,
+                                    self.terminal)
+        else:
+            self.ui.position_cursor(self.focus, 0, 0, 0, 0,
+                                    self.explorer.selected_index,
+                                    self.explorer.scroll_offset,
+                                    self.terminal)
         self.ui.refresh()
         self.status_message = ""
 
@@ -141,6 +167,33 @@ class Editor:
         if cmd == CMD_TOGGLE_TERMINAL:
             self._toggle_terminal()
             return
+
+        if cmd == CMD_TOGGLE_MD_VIEW:
+            self._toggle_md_view()
+            return
+
+        # In markdown view mode, only allow scrolling and mode toggle
+        if self.md_view_mode and self.focus == "editor":
+            if cmd == CMD_MOVE_DOWN:
+                max_scroll = max(0, len(self.md_rendered) - self.ui.content_height)
+                self.md_scroll_row = min(self.md_scroll_row + 1, max_scroll)
+            elif cmd == CMD_MOVE_UP:
+                self.md_scroll_row = max(0, self.md_scroll_row - 1)
+            elif cmd == CMD_PAGE_DOWN:
+                max_scroll = max(0, len(self.md_rendered) - self.ui.content_height)
+                self.md_scroll_row = min(self.md_scroll_row + self.ui.content_height, max_scroll)
+            elif cmd == CMD_PAGE_UP:
+                self.md_scroll_row = max(0, self.md_scroll_row - self.ui.content_height)
+            elif cmd == CMD_HOME:
+                self.md_scroll_row = 0
+            elif cmd == CMD_END:
+                self.md_scroll_row = max(0, len(self.md_rendered) - self.ui.content_height)
+            elif cmd in (CMD_SAVE, CMD_EXIT, CMD_REFRESH, CMD_RESIZE):
+                pass  # fall through to global handlers below
+            else:
+                return
+            if cmd not in (CMD_SAVE, CMD_EXIT, CMD_REFRESH, CMD_RESIZE):
+                return
 
         # Global commands work regardless of focus
         if cmd in (CMD_SAVE, CMD_EXIT, CMD_REFRESH, CMD_RESIZE):
@@ -287,6 +340,19 @@ class Editor:
         else:
             self.focus = "editor"
 
+    def _toggle_md_view(self):
+        if not self._is_markdown():
+            self.status_message = "Not a markdown file"
+            return
+        self.md_view_mode = not self.md_view_mode
+        if self.md_view_mode:
+            self._render_markdown()
+            self.md_scroll_row = 0
+            self.status_message = "View mode (F5 to edit)"
+        else:
+            curses.curs_set(1)
+            self.status_message = "Edit mode (F5 to preview)"
+
     def _toggle_terminal(self):
         if self.focus == "terminal":
             self.focus = "editor"
@@ -303,6 +369,10 @@ class Editor:
         self.scroll_row = 0
         self.scroll_col = 0
         self.focus = "editor"
+        self.md_view_mode = self._is_markdown()
+        self.md_scroll_row = 0
+        if self.md_view_mode:
+            self._render_markdown()
         self.status_message = f"Opened {os.path.basename(path)}"
 
     def _check_save_before_close(self):
