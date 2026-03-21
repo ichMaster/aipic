@@ -25,6 +25,7 @@ python3 main.py filename.txt
 | `Ctrl+V` | Page Down |
 | `Ctrl+A` | Move to beginning of line |
 | `Ctrl+E` | Move to end of line |
+| `Ctrl+B` | Toggle terminal panel |
 | `Ctrl+L` | Refresh screen |
 
 Arrow keys, Home, End, Page Up, Page Down, Backspace, and Delete all work as expected.
@@ -39,6 +40,7 @@ ui.py           Screen rendering: title bar, content, status, shortcuts
 keybindings.py  Key mapping and command dispatch
 search.py       Search with wrap-around
 clipboard.py    Cut/paste buffer management
+terminal.py     Embedded terminal panel (pty)
 ```
 
 ## Requirements

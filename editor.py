@@ -8,7 +8,10 @@ from keybindings import get_command, CMD_MOVE_UP, CMD_MOVE_DOWN, CMD_MOVE_LEFT, 
 from keybindings import CMD_HOME, CMD_END, CMD_PAGE_UP, CMD_PAGE_DOWN
 from keybindings import CMD_BACKSPACE, CMD_DELETE, CMD_ENTER, CMD_TAB
 from keybindings import CMD_SAVE, CMD_EXIT, CMD_SEARCH, CMD_CUT, CMD_PASTE
-from keybindings import CMD_REFRESH, CMD_RESIZE, CMD_INSERT
+from keybindings import CMD_REFRESH, CMD_RESIZE, CMD_INSERT, CMD_TOGGLE_EXPLORER
+from keybindings import CMD_TOGGLE_TERMINAL
+from explorer import FileExplorer
+from terminal import Terminal
 from ui import UI
 
 
@@ -21,6 +24,12 @@ class Editor:
         self.ui = UI(stdscr)
         self.clipboard = Clipboard()
         self.search = Search()
+        self.explorer = FileExplorer(
+            os.path.dirname(os.path.abspath(filepath)) if filepath else None
+        )
+        self.terminal = Terminal()
+        self.terminal.start()
+        self.focus = "editor"
 
         if filepath and os.path.exists(filepath):
             self.buffer = Buffer.from_file(filepath)
@@ -38,24 +47,36 @@ class Editor:
         self.stdscr.keypad(True)
         curses.curs_set(1)
         curses.raw()
-        self.stdscr.nodelay(False)
+        self.stdscr.timeout(50)
 
-        while self.running:
-            self._draw()
-            key = self.stdscr.getch()
-            self._handle_key(key)
+        try:
+            while self.running:
+                self.terminal.read_output()
+                self._draw()
+                key = self.stdscr.getch()
+                if key == -1:
+                    continue
+                self._handle_key(key)
+        finally:
+            self.terminal.stop()
 
     def _draw(self):
         self.stdscr.erase()
-        self.ui.update_dimensions()
+        self.ui.update_dimensions(terminal_visible=True)
+        self.terminal.resize(self.ui.content_height - 1, self.ui.terminal_width)
         self._adjust_scroll()
         self.ui.draw_title_bar(self.filepath, self.buffer.modified)
+        self.ui.draw_explorer(self.explorer, self.focus)
         self.ui.draw_content(self.buffer, self.scroll_row, self.scroll_col,
                              self.cursor_row, self.cursor_col)
+        self.ui.draw_terminal(self.terminal, self.focus)
         self.ui.draw_status_bar(self.status_message)
         self.ui.draw_shortcut_bar()
-        self.ui.position_cursor(self.cursor_row, self.cursor_col,
-                                self.scroll_row, self.scroll_col)
+        self.ui.position_cursor(self.focus, self.cursor_row, self.cursor_col,
+                                self.scroll_row, self.scroll_col,
+                                self.explorer.selected_index,
+                                self.explorer.scroll_offset,
+                                self.terminal)
         self.ui.refresh()
         self.status_message = ""
 
@@ -69,14 +90,87 @@ class Editor:
         # Horizontal scrolling
         if self.cursor_col < self.scroll_col:
             self.scroll_col = self.cursor_col
-        elif self.cursor_col >= self.scroll_col + self.ui.width:
-            self.scroll_col = self.cursor_col - self.ui.width + 1
+        elif self.cursor_col >= self.scroll_col + self.ui.content_width:
+            self.scroll_col = self.cursor_col - self.ui.content_width + 1
 
     def _handle_key(self, key):
+        # When terminal is focused, forward most keys directly to the pty
+        if self.focus == "terminal":
+            cmd, ch = get_command(key)
+            if cmd == CMD_TOGGLE_TERMINAL:
+                self._toggle_terminal()
+                return
+            if cmd == CMD_TOGGLE_EXPLORER:
+                self._toggle_focus()
+                return
+            if cmd == CMD_EXIT:
+                self._exit()
+                return
+            if cmd == CMD_RESIZE:
+                self._resize()
+                return
+            # Forward special keys as escape sequences
+            special_map = {
+                CMD_MOVE_UP: "up", CMD_MOVE_DOWN: "down",
+                CMD_MOVE_LEFT: "left", CMD_MOVE_RIGHT: "right",
+                CMD_HOME: "home", CMD_END: "end",
+                CMD_DELETE: "delete",
+                CMD_PAGE_UP: "page_up", CMD_PAGE_DOWN: "page_down",
+            }
+            if cmd in special_map:
+                self.terminal.send_special_key(special_map[cmd])
+            elif cmd == CMD_ENTER:
+                self.terminal.send_key(13)
+            elif cmd == CMD_TAB:
+                self.terminal.send_key(9)
+            elif cmd == CMD_BACKSPACE:
+                self.terminal.send_key(127)
+            elif key < 256:
+                self.terminal.send_key(key)
+            return
+
         cmd, ch = get_command(key)
         if cmd is None:
             return
 
+        # Toggle focus works in both modes
+        if cmd == CMD_TOGGLE_EXPLORER:
+            self._toggle_focus()
+            return
+
+        if cmd == CMD_TOGGLE_TERMINAL:
+            self._toggle_terminal()
+            return
+
+        # Global commands work regardless of focus
+        if cmd in (CMD_SAVE, CMD_EXIT, CMD_REFRESH, CMD_RESIZE):
+            global_handlers = {
+                CMD_SAVE: self._save,
+                CMD_EXIT: self._exit,
+                CMD_REFRESH: self._refresh,
+                CMD_RESIZE: self._resize,
+            }
+            global_handlers[cmd]()
+            return
+
+        if self.focus == "explorer":
+            self._handle_explorer_key(cmd)
+        else:
+            self._handle_editor_key(cmd, ch)
+
+    def _handle_explorer_key(self, cmd):
+        if cmd == CMD_MOVE_UP:
+            self.explorer.move_up()
+        elif cmd == CMD_MOVE_DOWN:
+            self.explorer.move_down()
+        elif cmd in (CMD_ENTER, CMD_MOVE_RIGHT):
+            action, path = self.explorer.enter()
+            if action == "open_file":
+                self._open_file(path)
+        elif cmd in (CMD_MOVE_LEFT, CMD_BACKSPACE):
+            self.explorer.go_parent()
+
+    def _handle_editor_key(self, cmd, ch):
         handlers = {
             CMD_MOVE_UP: self._move_up,
             CMD_MOVE_DOWN: self._move_down,
@@ -90,13 +184,9 @@ class Editor:
             CMD_DELETE: self._delete,
             CMD_ENTER: self._enter,
             CMD_TAB: self._tab,
-            CMD_SAVE: self._save,
-            CMD_EXIT: self._exit,
             CMD_SEARCH: self._search,
             CMD_CUT: self._cut,
             CMD_PASTE: self._paste,
-            CMD_REFRESH: self._refresh,
-            CMD_RESIZE: self._resize,
         }
 
         handler = handlers.get(cmd)
@@ -189,19 +279,47 @@ class Editor:
         except OSError as e:
             self.status_message = f"Error: {e}"
 
-    def _exit(self):
-        if self.buffer.modified:
-            answer = self.ui.get_yes_no_cancel(
-                "Save modified buffer? (Y)es, (N)o, (C)ancel: ")
-            if answer == 'y':
-                self._save()
-                if self.buffer.modified:
-                    return  # Save failed
-                self.running = False
-            elif answer == 'n':
-                self.running = False
-            # 'c' = cancel, do nothing
+    def _toggle_focus(self):
+        if self.focus == "editor":
+            self.focus = "explorer"
+        elif self.focus == "explorer":
+            self.focus = "terminal"
         else:
+            self.focus = "editor"
+
+    def _toggle_terminal(self):
+        if self.focus == "terminal":
+            self.focus = "editor"
+        else:
+            self.focus = "terminal"
+
+    def _open_file(self, path):
+        if not self._check_save_before_close():
+            return
+        self.filepath = path
+        self.buffer = Buffer.from_file(path)
+        self.cursor_row = 0
+        self.cursor_col = 0
+        self.scroll_row = 0
+        self.scroll_col = 0
+        self.focus = "editor"
+        self.status_message = f"Opened {os.path.basename(path)}"
+
+    def _check_save_before_close(self):
+        """Returns True if safe to close current buffer, False if cancelled."""
+        if not self.buffer.modified:
+            return True
+        answer = self.ui.get_yes_no_cancel(
+            "Save modified buffer? (Y)es, (N)o, (C)ancel: ")
+        if answer == 'y':
+            self._save()
+            return not self.buffer.modified  # False if save failed
+        elif answer == 'n':
+            return True
+        return False  # cancel
+
+    def _exit(self):
+        if self._check_save_before_close():
             self.running = False
 
     def _search(self):
@@ -246,4 +364,4 @@ class Editor:
         self.stdscr.clear()
 
     def _resize(self):
-        self.ui.update_dimensions()
+        self.ui.update_dimensions(terminal_visible=self.terminal.visible)

@@ -44,22 +44,54 @@ Aipic is a simple, user-friendly terminal text editor. Like Pico, it prioritizes
 - `Ctrl+K`: cut current line (stores in cut buffer; consecutive cuts append)
 - `Ctrl+U`: paste (uncut) the cut buffer at cursor position
 
+### 2.6 Embedded Terminal
+- `Ctrl+B`: toggle the terminal panel on the right side of the screen (40 columns wide)
+- Opens the user's default shell (`$SHELL` or `/bin/sh`)
+- When focused, all keypresses are forwarded to the shell (except `Ctrl+B`, `Ctrl+T`, `Ctrl+X`)
+- Terminal output is displayed with auto-scroll to the latest output
+- The shell process is started on first toggle and stopped on editor exit
+- Arrow keys, Backspace, Tab, Enter, Home, End, Delete, Page Up/Down all work inside the terminal
+
+### 2.7 File Explorer
+- A file explorer panel is always visible on the left side of the screen (30 columns wide)
+- Toggle focus between the explorer and the editor with `Ctrl+T`
+- The explorer shows the contents of the current working directory
+  - Directories listed first (sorted), then files (sorted)
+  - `..` entry at the top to navigate to the parent directory
+  - Hidden files (dotfiles) are excluded
+- Navigation within the explorer (when focused):
+  - `Up` / `Down`: move selection
+  - `Enter` / `Right`: open selected file or enter selected directory
+  - `Left` / `Backspace`: navigate to parent directory
+- Opening a file from the explorer:
+  - Only one file can be open at a time
+  - If the current buffer is modified, prompt to save before closing ("Save modified buffer? Y/N/Cancel")
+  - After opening, focus switches to the editor
+- The focused panel is visually indicated (bold header on the active panel)
+
 ## 3. User Interface Layout
 
 ```
 +----------------------------------------------------------+
 |  Aipic 1.0          filename.txt        Modified         |  <- Title bar
-|                                                          |
-|  (file content area)                                     |
-|                                                          |
-|                                                          |
-|                                                          |
-|                                                          |
+| /path/to/dir       |                                     |
+| ..                  | (file content area)                |
+| [dir1/]             |                                     |
+| [dir2/]             |                                     |
+|  file1.py           |                                     |
+|  file2.txt          |                                     |
+|                     |                                     |
+|                     |                    | Terminal       |
+|                     |                    | $ ls           |
+|                     |                    | file1.py       |
+|                     |                    | $              |
 |  [ status message ]                                      |  <- Status bar
 |  ^O Write Out  ^X Exit  ^W Where Is  ^K Cut  ^U Paste   |  <- Shortcut bar row 1
-|  ^Y Prev Page  ^V Next Page  ^L Refresh  ^A Home ^E End |  <- Shortcut bar row 2
+|  ^Y Prev Page  ^V Next Page  ^T Explorer  ^B Terminal    |  <- Shortcut bar row 2
 +----------------------------------------------------------+
 ```
+
+The explorer panel occupies the left 30 columns. The terminal panel (when visible) occupies the right 40 columns. Vertical separators divide them from the content area. The title bar, status bar, and shortcut bars span the full terminal width.
 
 ### 3.1 Title Bar
 - Displayed as an inverted (reverse video) bar at the top
@@ -98,6 +130,8 @@ Aipic is a simple, user-friendly terminal text editor. Like Pico, it prioritizes
 | `keybindings.py`| Key mapping and command dispatch table               |
 | `search.py`     | Search logic (find next, wrap around)                |
 | `clipboard.py`  | Cut buffer management (cut/paste lines)              |
+| `explorer.py`   | File explorer panel: directory listing, navigation   |
+| `terminal.py`   | Embedded terminal panel: pty subprocess, I/O          |
 
 ### 4.3 Buffer Model
 - Text is stored as a list of strings (one per line)
@@ -127,7 +161,7 @@ positional arguments:
 
 ## 6. Limitations (Out of Scope for v1.0)
 - No syntax highlighting
-- No multiple buffers / split view
+- No multiple open files (only one file at a time)
 - No undo/redo
 - No mouse support
 - No configuration file

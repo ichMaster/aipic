@@ -10,6 +10,8 @@ CTRL_U = 21   # Paste (uncut)
 CTRL_V = 22   # Page Down
 CTRL_W = 23   # Where Is (search)
 CTRL_X = 24   # Exit
+CTRL_T = 20   # Toggle explorer
+CTRL_B = 2    # Toggle terminal
 CTRL_Y = 25   # Page Up
 
 # Command names
@@ -33,6 +35,8 @@ CMD_PASTE = "paste"
 CMD_REFRESH = "refresh"
 CMD_RESIZE = "resize"
 CMD_INSERT = "insert"
+CMD_TOGGLE_EXPLORER = "toggle_explorer"
+CMD_TOGGLE_TERMINAL = "toggle_terminal"
 
 
 def get_command(key):
@@ -63,6 +67,8 @@ def get_command(key):
         CTRL_K: CMD_CUT,
         CTRL_U: CMD_PASTE,
         CTRL_L: CMD_REFRESH,
+        CTRL_T: CMD_TOGGLE_EXPLORER,
+        CTRL_B: CMD_TOGGLE_TERMINAL,
         curses.KEY_RESIZE: CMD_RESIZE,
     }
 
