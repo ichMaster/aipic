@@ -202,6 +202,29 @@ def _parse_inline(text):
     return spans
 
 
+def _strip_inline_markers(text):
+    """Return visible text length after removing markdown markers."""
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'_(.+?)_', r'\1', text)
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    return text
+
+
+def _parse_inline_with_attr(text, base_attr):
+    """Parse inline markdown, using base_attr for normal text instead of CP_NORMAL."""
+    spans = _parse_inline(text)
+    result = []
+    for txt, attr, extra in spans:
+        if attr == curses.color_pair(CP_NORMAL):
+            result.append((txt, base_attr, extra))
+        else:
+            result.append((txt, attr, extra))
+    return result
+
+
 def _render_table(lines, start_idx):
     """Render a markdown table with box drawing."""
     rendered = []
@@ -224,21 +247,28 @@ def _render_table(lines, start_idx):
     header = rows[0]
     data_rows = rows[2:] if len(rows) > 2 else []
 
-    # Calculate column widths
+    # Calculate column widths based on visible text (strip markdown markers)
     all_rows = [header] + data_rows
     col_count = max(len(r) for r in all_rows)
     widths = [0] * col_count
     for row in all_rows:
         for j, cell in enumerate(row):
             if j < col_count:
-                widths[j] = max(widths[j], len(cell))
+                visible_len = len(_strip_inline_markers(cell))
+                widths[j] = max(widths[j], visible_len)
 
     # Draw header
     rl = RenderedLine(indent=2)
     rl.spans.append(("  ", curses.color_pair(CP_NORMAL), 0))
     for j, cell in enumerate(header):
         w = widths[j] if j < len(widths) else len(cell)
-        rl.spans.append((f" {cell:<{w}} ", curses.color_pair(CP_HEADER) | curses.A_BOLD, 0))
+        rl.spans.append((" ", curses.color_pair(CP_HEADER) | curses.A_BOLD, 0))
+        rl.spans.extend(_parse_inline_with_attr(cell, curses.color_pair(CP_HEADER) | curses.A_BOLD))
+        padding = w - len(_strip_inline_markers(cell))
+        if padding > 0:
+            rl.spans.append((" " * (padding + 1), curses.color_pair(CP_HEADER) | curses.A_BOLD, 0))
+        else:
+            rl.spans.append((" ", curses.color_pair(CP_HEADER) | curses.A_BOLD, 0))
         if j < len(header) - 1:
             rl.spans.append(("│", curses.color_pair(CP_HRULE) | curses.A_DIM, 0))
     rendered.append(rl)
@@ -259,7 +289,13 @@ def _render_table(lines, start_idx):
         for j in range(col_count):
             cell = row[j] if j < len(row) else ""
             w = widths[j]
-            rl.spans.append((f" {cell:<{w}} ", curses.color_pair(CP_NORMAL), 0))
+            rl.spans.append((" ", curses.color_pair(CP_NORMAL), 0))
+            rl.spans.extend(_parse_inline(cell))
+            padding = w - len(_strip_inline_markers(cell))
+            if padding > 0:
+                rl.spans.append((" " * (padding + 1), curses.color_pair(CP_NORMAL), 0))
+            else:
+                rl.spans.append((" ", curses.color_pair(CP_NORMAL), 0))
             if j < col_count - 1:
                 rl.spans.append(("│", curses.color_pair(CP_HRULE) | curses.A_DIM, 0))
         rendered.append(rl)

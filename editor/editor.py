@@ -11,6 +11,7 @@ from .keybindings import CMD_BACKSPACE, CMD_DELETE, CMD_ENTER, CMD_TAB
 from .keybindings import CMD_SAVE, CMD_EXIT, CMD_SEARCH, CMD_CUT, CMD_PASTE
 from .keybindings import CMD_REFRESH, CMD_RESIZE, CMD_INSERT, CMD_TOGGLE_EXPLORER
 from .keybindings import CMD_TOGGLE_TERMINAL, CMD_TOGGLE_MD_VIEW, CMD_TOGGLE_CHECKED_VIEW
+from .keybindings import CMD_FILTER_PROMPT, CMD_RESET_FILTER, CMD_SELECT_ALL
 from .explorer import FileExplorer
 from .inv_viewer import InvViewer
 from .markdown_renderer import render_markdown
@@ -104,8 +105,9 @@ class Editor:
                 self.ui.draw_inv_table(iv)
                 n = len(iv.records)
                 sel = iv.selected_index + 1
-                chk_text = f" ✓{chk}" if chk else ""
-                mode_indicator = f" [TABLE {sel}/{n}{chk_text}] Space=Select Enter=Detail F6=Filter"
+                chk_text = f" sel:{chk}/{n}" if chk else ""
+                flt_text = f" ~{iv.filter_expr}" if iv.filtered else ""
+                mode_indicator = f" [TABLE {sel}/{n}{chk_text}{flt_text}] Space=Select ^D=All ^F=Filter ^R=Reset"
         elif self.md_view_mode and self.md_rendered is not None:
             self.ui.draw_markdown_content(self.md_rendered, self.md_scroll_row)
             if self.focus == "editor":
@@ -203,10 +205,21 @@ class Editor:
         if self.inv_viewer is not None and self.focus == "editor":
             iv = self.inv_viewer
             vh = self.ui.content_height - 2
-            if cmd == CMD_TOGGLE_MD_VIEW:  # F5 = back to all records
+            if cmd == CMD_TOGGLE_MD_VIEW:  # F5 = back to all/filtered records
                 iv.detail_mode = False
                 if iv.checked_view:
                     iv.checked_view = False
+            elif cmd == CMD_FILTER_PROMPT:  # Ctrl+F = column filter prompt
+                if not iv.detail_mode and not iv.checked_view:
+                    self._inv_filter_prompt(iv)
+            elif cmd == CMD_RESET_FILTER:  # Ctrl+R = reset filter
+                iv.reset_filter()
+                self.stdscr.clear()
+                self.status_message = "Filter cleared"
+            elif cmd == CMD_SELECT_ALL:  # Ctrl+D = select all visible records
+                if not iv.detail_mode and not iv.checked_view:
+                    iv.select_all()
+                    self.status_message = f"Selected all {len(iv.records)} records"
             elif cmd == CMD_TOGGLE_CHECKED_VIEW:  # F6 = filter to selected
                 if not iv.detail_mode and not iv.checked_view:
                     if not iv.toggle_checked_view():
@@ -419,6 +432,37 @@ class Editor:
             self.status_message = "Error: Permission denied"
         except OSError as e:
             self.status_message = f"Error: {e}"
+
+    def _inv_filter_prompt(self, iv):
+        """Prompt for column filter. Supports and/or/parentheses:
+        object_type = function
+        object_type = function and complexity = 4XL
+        (object_type = function or object_type = view) and complexity = 4*
+        """
+        from .inv_viewer import parse_filter
+        default = iv.filter_expr or ""
+        query = self.ui.get_input("Filter: ", default)
+        if query is None:
+            self.status_message = "Cancelled"
+            return
+        if query == "":
+            if iv.filtered:
+                return  # keep current filter
+            self.status_message = "No filter entered"
+            return
+        if "=" not in query:
+            self.status_message = "Use: col=val [and|or ...], () for grouping"
+            return
+        available = iv.get_filter_fields()
+        node, error = parse_filter(query, available)
+        if error:
+            self.status_message = error
+            return
+        if not iv.apply_filter(node, query.strip()):
+            self.status_message = "No records match filter"
+            return
+        total = len(iv._all_records) if iv._all_records else 0
+        self.status_message = f"Filter: {iv.filter_expr} ({len(iv.records)}/{total})"
 
     def _save_checked_records(self):
         iv = self.inv_viewer

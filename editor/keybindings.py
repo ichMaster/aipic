@@ -14,6 +14,9 @@ CTRL_T = 20   # Toggle explorer
 CTRL_B = 2    # Toggle terminal
 CTRL_M_ALT = 13  # Note: Ctrl+M = 13 = Enter, so we use F5 instead
 CTRL_Y = 25   # Page Up
+CTRL_F = 6    # Filter prompt (inv viewer)
+CTRL_R = 18   # Reset filter (inv viewer)
+CTRL_D = 4    # Select all filtered (inv viewer)
 
 # Command names
 CMD_MOVE_UP = "move_up"
@@ -41,6 +44,9 @@ CMD_TOGGLE_TERMINAL = "toggle_terminal"
 CMD_TOGGLE_MD_VIEW = "toggle_md_view"
 CMD_TOGGLE_CHECKED_VIEW = "toggle_checked_view"
 CMD_SPACE = "space"
+CMD_FILTER_PROMPT = "filter_prompt"
+CMD_RESET_FILTER = "reset_filter"
+CMD_SELECT_ALL = "select_all"
 
 
 def get_command(key):
@@ -75,6 +81,9 @@ def get_command(key):
         CTRL_B: CMD_TOGGLE_TERMINAL,
         curses.KEY_F5: CMD_TOGGLE_MD_VIEW,
         curses.KEY_F6: CMD_TOGGLE_CHECKED_VIEW,
+        CTRL_F: CMD_FILTER_PROMPT,
+        CTRL_R: CMD_RESET_FILTER,
+        CTRL_D: CMD_SELECT_ALL,
         curses.KEY_RESIZE: CMD_RESIZE,
     }
 

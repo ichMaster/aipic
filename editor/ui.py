@@ -512,11 +512,11 @@ class UI:
         except curses.error:
             pass
 
-    def get_input(self, prompt):
+    def get_input(self, prompt, default=""):
         """Show a prompt on the status bar and read a string."""
         row = self.height - 3
         try:
-            self.stdscr.addnstr(row, 0, prompt.ljust(self.width), self.width,
+            self.stdscr.addnstr(row, 0, (prompt + default).ljust(self.width), self.width,
                                 curses.color_pair(1))
         except curses.error:
             pass
@@ -526,8 +526,8 @@ class UI:
         curses.curs_set(1)
         result = ""
         try:
-            self.stdscr.move(row, len(prompt))
-            buf = []
+            buf = list(default)
+            self.stdscr.move(row, len(prompt) + len(buf))
             while True:
                 ch = self.stdscr.getch()
                 if ch in (10, 13, curses.KEY_ENTER):
