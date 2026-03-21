@@ -83,9 +83,13 @@ class Editor:
         self.ui.draw_title_bar(self.filepath, self.buffer.modified)
         self.ui.draw_explorer(self.explorer, self.focus)
 
+        if self.focus == "terminal":
+            curses.curs_set(1)
+
         if self.inv_viewer is not None:
             iv = self.inv_viewer
-            curses.curs_set(0)
+            if self.focus != "terminal":
+                curses.curs_set(0)
             chk = iv.get_checked_count()
             if iv.detail_mode:
                 self.ui.draw_inv_detail(iv)
@@ -303,6 +307,9 @@ class Editor:
                 self._open_file(path)
         elif cmd in (CMD_MOVE_LEFT, CMD_BACKSPACE):
             self.explorer.go_parent()
+        elif cmd == CMD_TOGGLE_MD_VIEW:
+            self.explorer.refresh_entries()
+            self.status_message = "Explorer refreshed"
 
     def _handle_editor_key(self, cmd, ch):
         handlers = {
@@ -540,6 +547,7 @@ class Editor:
         self.status_message = f"Pasted {len(lines)} line(s)"
 
     def _refresh(self):
+        self.explorer.refresh_entries()
         self.stdscr.clear()
 
     def _resize(self):
