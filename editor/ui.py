@@ -1,4 +1,5 @@
 import curses
+import json
 
 from . import markdown_renderer
 
@@ -39,6 +40,10 @@ class UI:
         curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Shortcut keys
         curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Content area
         markdown_renderer.setup_colors()
+        curses.init_pair(12, curses.COLOR_CYAN, curses.COLOR_BLACK)    # inv header
+        curses.init_pair(13, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # inv key
+        curses.init_pair(14, curses.COLOR_WHITE, curses.COLOR_BLACK)   # inv value
+        curses.init_pair(15, curses.COLOR_BLACK, curses.COLOR_YELLOW)  # inv checked header
         self.stdscr.bkgd(' ', curses.color_pair(4))
 
     def update_dimensions(self, terminal_visible=True):
@@ -180,6 +185,234 @@ class UI:
                     except curses.error:
                         pass
                     col += len(display)
+
+    def _draw_inv_header(self, columns, mark_col=True, header_cp=12):
+        """Draw table header row with optional check-mark column."""
+        cw = self.content_width
+        sc = self.content_start_col
+        header_row = self.content_start_row
+
+        try:
+            self.stdscr.addnstr(header_row, sc, " " * cw, cw, curses.color_pair(header_cp))
+        except curses.error:
+            pass
+
+        col = sc
+        if mark_col:
+            try:
+                self.stdscr.addnstr(header_row, col, "   ", 3,
+                                    curses.color_pair(header_cp) | curses.A_BOLD)
+            except curses.error:
+                pass
+            col += 3
+
+        for c in columns:
+            w = min(c["width"], cw - (col - sc))
+            if w <= 0:
+                break
+            text = f" {c['label']:<{w - 1}}"[:w]
+            try:
+                self.stdscr.addnstr(header_row, col, text, w,
+                                    curses.color_pair(header_cp) | curses.A_BOLD)
+            except curses.error:
+                pass
+            col += w
+
+        # Separator
+        sep_row = self.content_start_row + 1
+        try:
+            self.stdscr.addnstr(sep_row, sc, "─" * cw, cw,
+                                curses.color_pair(header_cp) | curses.A_DIM)
+        except curses.error:
+            pass
+
+    def draw_inv_table(self, inv_viewer):
+        columns = inv_viewer.columns
+        cw = self.content_width
+        sc = self.content_start_col
+
+        self._draw_inv_header(columns, mark_col=True)
+
+        list_height = self.content_height - 2
+        inv_viewer.adjust_scroll(list_height)
+
+        for i in range(list_height):
+            screen_row = self.content_start_row + 2 + i
+            rec_idx = inv_viewer.scroll_offset + i
+
+            try:
+                self.stdscr.addnstr(screen_row, sc, " " * cw, cw, curses.color_pair(4))
+            except curses.error:
+                pass
+
+            if rec_idx < len(inv_viewer.records):
+                record = inv_viewer.records[rec_idx]
+                is_cursor = (rec_idx == inv_viewer.selected_index)
+                is_checked = (rec_idx in inv_viewer.checked)
+                attr = curses.color_pair(4) | curses.A_REVERSE if is_cursor else curses.color_pair(4)
+
+                # Check mark column
+                mark = " ✓ " if is_checked else "   "
+                mark_attr = curses.color_pair(12) | curses.A_BOLD if is_checked else attr
+                if is_cursor:
+                    mark_attr = curses.color_pair(4) | curses.A_REVERSE
+                try:
+                    self.stdscr.addnstr(screen_row, sc, mark, 3, mark_attr)
+                except curses.error:
+                    pass
+
+                col = sc + 3
+                for c in columns:
+                    w = min(c["width"], cw - (col - sc))
+                    if w <= 0:
+                        break
+                    val = str(record.get(c["field"], ""))
+                    text = f" {val:<{w - 1}}"[:w]
+                    try:
+                        self.stdscr.addnstr(screen_row, col, text, w, attr)
+                    except curses.error:
+                        pass
+                    col += w
+
+    def draw_inv_checked_table(self, inv_viewer):
+        """Draw table showing only checked records."""
+        columns = inv_viewer.columns
+        cw = self.content_width
+        sc = self.content_start_col
+        checked_records = inv_viewer.get_checked_records()
+
+        self._draw_inv_header(columns, mark_col=True, header_cp=15)
+
+        list_height = self.content_height - 2
+        inv_viewer.adjust_checked_scroll(list_height)
+
+        for i in range(list_height):
+            screen_row = self.content_start_row + 2 + i
+            rec_idx = inv_viewer._checked_scroll + i
+
+            try:
+                self.stdscr.addnstr(screen_row, sc, " " * cw, cw, curses.color_pair(4))
+            except curses.error:
+                pass
+
+            if rec_idx < len(checked_records):
+                record = checked_records[rec_idx]
+                is_cursor = (rec_idx == inv_viewer._checked_cursor)
+                is_unchecked = inv_viewer.is_unchecked_in_view(rec_idx)
+                if is_cursor:
+                    attr = curses.color_pair(4) | curses.A_REVERSE
+                elif is_unchecked:
+                    attr = curses.color_pair(4) | curses.A_DIM
+                else:
+                    attr = curses.color_pair(4)
+
+                # Show check/uncheck marker
+                marker = "   " if is_unchecked else " ✓ "
+                try:
+                    self.stdscr.addnstr(screen_row, sc, marker, 3, attr)
+                except curses.error:
+                    pass
+
+                col = sc + 3
+                for c in columns:
+                    w = min(c["width"], cw - (col - sc))
+                    if w <= 0:
+                        break
+                    val = str(record.get(c["field"], ""))
+                    text = f" {val:<{w - 1}}"[:w]
+                    try:
+                        self.stdscr.addnstr(screen_row, col, text, w, attr)
+                    except curses.error:
+                        pass
+                    col += w
+
+    def draw_inv_detail(self, inv_viewer):
+        cw = self.content_width
+        sc = self.content_start_col
+        if inv_viewer.checked_view:
+            record = inv_viewer.get_checked_selected_record()
+        else:
+            record = inv_viewer.get_selected_record()
+        if not record:
+            return
+
+        # Header: record identifier
+        header_row = self.content_start_row
+        name = str(record.get("object_name", record.get("pipeline_item_name", "Record")))
+        header_text = f" Record: {name}"
+        try:
+            self.stdscr.addnstr(header_row, sc, header_text.ljust(cw)[:cw], cw,
+                                curses.color_pair(12) | curses.A_BOLD)
+        except curses.error:
+            pass
+
+        # Build detail lines (key-value pairs, multi-line values expanded)
+        detail_lines = []
+        max_key_len = max(len(k) for k in record.keys()) if record else 0
+        for key, value in record.items():
+            val_str = self._format_inv_value(value)
+            val_lines = val_str.split("\n")
+            detail_lines.append(("key", key, val_lines[0], max_key_len))
+            for extra in val_lines[1:]:
+                detail_lines.append(("cont", "", extra, max_key_len))
+
+        # Clamp scroll
+        visible = self.content_height - 1  # -1 for header
+        max_scroll = max(0, len(detail_lines) - visible)
+        if inv_viewer.detail_scroll > max_scroll:
+            inv_viewer.detail_scroll = max_scroll
+
+        for i in range(visible):
+            screen_row = self.content_start_row + 1 + i
+            line_idx = inv_viewer.detail_scroll + i
+
+            # Clear
+            try:
+                self.stdscr.addnstr(screen_row, sc, " " * cw, cw, curses.color_pair(4))
+            except curses.error:
+                pass
+
+            if line_idx < len(detail_lines):
+                kind, key, val, mkl = detail_lines[line_idx]
+                if kind == "key":
+                    key_text = f"  {key:>{mkl}} : "
+                    try:
+                        self.stdscr.addnstr(screen_row, sc, key_text,
+                                            min(len(key_text), cw),
+                                            curses.color_pair(13) | curses.A_BOLD)
+                    except curses.error:
+                        pass
+                    val_col = sc + len(key_text)
+                    val_w = cw - len(key_text)
+                    if val_w > 0:
+                        try:
+                            self.stdscr.addnstr(screen_row, val_col,
+                                                val[:val_w], val_w,
+                                                curses.color_pair(14))
+                        except curses.error:
+                            pass
+                else:
+                    indent = mkl + 5  # align with value column
+                    val_col = sc + indent
+                    val_w = cw - indent
+                    if val_w > 0:
+                        try:
+                            self.stdscr.addnstr(screen_row, val_col,
+                                                val[:val_w], val_w,
+                                                curses.color_pair(14))
+                        except curses.error:
+                            pass
+
+    def _format_inv_value(self, value):
+        if value is None:
+            return "—"
+        if isinstance(value, str) and value.startswith("{"):
+            try:
+                parsed = json.loads(value)
+                return json.dumps(parsed, indent=2)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return str(value)
 
     def draw_terminal(self, terminal, focus):
         if not self.terminal_visible:

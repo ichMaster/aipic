@@ -1,0 +1,35 @@
+{
+  "db_inventory": {
+    "columns": [
+      {"field": "object_name", "label": "Name", "width": 35},
+      {"field": "object_type", "label": "Type", "width": 15},
+      {"field": "technology_name", "label": "Tech", "width": 10},
+      {"field": "complexity", "label": "Cplx", "width": 5},
+      {"field": "schema_name", "label": "Schema", "width": 15},
+      {"field": "row_count", "label": "Rows", "width": 10},
+      {"field": "outscope", "label": "Scope", "width": 12}
+    ]
+  },
+  "etl_inventory": {
+    "columns": [
+      {"field": "pipeline_item_name", "label": "Item Name", "width": 35},
+      {"field": "platform_item_type", "label": "Type", "width": 12},
+      {"field": "technology_name", "label": "Tech", "width": 12},
+      {"field": "complexity", "label": "Cplx", "width": 5},
+      {"field": "folder", "label": "Folder", "width": 20},
+      {"field": "usage_frequency", "label": "Usage", "width": 10},
+      {"field": "outscope", "label": "Scope", "width": 12}
+    ]
+  },
+  "bi_inventory": {
+    "columns": [
+      {"field": "object_name", "label": "Name", "width": 35},
+      {"field": "object_type", "label": "Type", "width": 12},
+      {"field": "technology_name", "label": "Tech", "width": 10},
+      {"field": "complexity", "label": "Cplx", "width": 5},
+      {"field": "project_name", "label": "Project", "width": 20},
+      {"field": "usage_frequency", "label": "Usage", "width": 10},
+      {"field": "outscope", "label": "Scope", "width": 12}
+    ]
+  }
+}

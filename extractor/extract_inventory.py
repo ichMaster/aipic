@@ -57,7 +57,7 @@ def main():
     date_str = datetime.now().strftime("%Y%m%d")
 
     for tool_name, file_prefix in EXTRACTS:
-        filename = f"{file_prefix}_{date_str}.json"
+        filename = f"{file_prefix}_{date_str}.inv"
         filepath = os.path.join(OUTPUT_DIR, filename)
         print(f"Extracting {tool_name}...", end=" ", flush=True)
         try:

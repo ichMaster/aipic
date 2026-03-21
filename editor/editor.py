@@ -1,4 +1,5 @@
 import curses
+import json
 import os
 
 from .buffer import Buffer
@@ -9,8 +10,9 @@ from .keybindings import CMD_HOME, CMD_END, CMD_PAGE_UP, CMD_PAGE_DOWN
 from .keybindings import CMD_BACKSPACE, CMD_DELETE, CMD_ENTER, CMD_TAB
 from .keybindings import CMD_SAVE, CMD_EXIT, CMD_SEARCH, CMD_CUT, CMD_PASTE
 from .keybindings import CMD_REFRESH, CMD_RESIZE, CMD_INSERT, CMD_TOGGLE_EXPLORER
-from .keybindings import CMD_TOGGLE_TERMINAL, CMD_TOGGLE_MD_VIEW
+from .keybindings import CMD_TOGGLE_TERMINAL, CMD_TOGGLE_MD_VIEW, CMD_TOGGLE_CHECKED_VIEW
 from .explorer import FileExplorer
+from .inv_viewer import InvViewer
 from .markdown_renderer import render_markdown
 from .terminal import Terminal
 from .ui import UI
@@ -48,6 +50,7 @@ class Editor:
         self.md_scroll_row = 0
         if self.md_view_mode:
             self._render_markdown()
+        self.inv_viewer = InvViewer.from_file(self.filepath)
 
     def run(self):
         self.stdscr.keypad(True)
@@ -79,20 +82,44 @@ class Editor:
         self._adjust_scroll()
         self.ui.draw_title_bar(self.filepath, self.buffer.modified)
         self.ui.draw_explorer(self.explorer, self.focus)
-        if self.md_view_mode and self.md_rendered is not None:
+
+        if self.inv_viewer is not None:
+            iv = self.inv_viewer
+            curses.curs_set(0)
+            chk = iv.get_checked_count()
+            if iv.detail_mode:
+                self.ui.draw_inv_detail(iv)
+                mode_indicator = " [DETAIL] Enter=Back F5=All"
+            elif iv.checked_view:
+                self.ui.draw_inv_checked_table(iv)
+                sel = iv._checked_cursor + 1
+                n = len(iv._checked_list)
+                kept = iv.get_selected_count()
+                mode_indicator = f" [FILTERED {sel}/{n} kept:{kept}] Space=Unselect Enter=Detail F5=All"
+            else:
+                self.ui.draw_inv_table(iv)
+                n = len(iv.records)
+                sel = iv.selected_index + 1
+                chk_text = f" ✓{chk}" if chk else ""
+                mode_indicator = f" [TABLE {sel}/{n}{chk_text}] Space=Select Enter=Detail F6=Filter"
+        elif self.md_view_mode and self.md_rendered is not None:
             self.ui.draw_markdown_content(self.md_rendered, self.md_scroll_row)
             if self.focus == "editor":
                 curses.curs_set(0)
+            mode_indicator = " [VIEW] F5=Edit"
         else:
             if self.focus == "editor":
                 curses.curs_set(1)
             self.ui.draw_content(self.buffer, self.scroll_row, self.scroll_col,
                                  self.cursor_row, self.cursor_col)
+            mode_indicator = ""
+
         self.ui.draw_terminal(self.terminal, self.focus)
-        mode_indicator = " [VIEW] F5=Edit" if self.md_view_mode else ""
-        self.ui.draw_status_bar(self.status_message + mode_indicator if not self.status_message else self.status_message)
+        status = self.status_message if self.status_message else mode_indicator
+        self.ui.draw_status_bar(status)
         self.ui.draw_shortcut_bar()
-        if not self.md_view_mode:
+
+        if self.inv_viewer is None and not self.md_view_mode:
             self.ui.position_cursor(self.focus, self.cursor_row, self.cursor_col,
                                     self.scroll_row, self.scroll_col,
                                     self.explorer.selected_index,
@@ -166,6 +193,60 @@ class Editor:
 
         if cmd == CMD_TOGGLE_TERMINAL:
             self._toggle_terminal()
+            return
+
+        # In inv viewer mode, handle navigation (must be before md view toggle)
+        if self.inv_viewer is not None and self.focus == "editor":
+            iv = self.inv_viewer
+            vh = self.ui.content_height - 2
+            if cmd == CMD_TOGGLE_MD_VIEW:  # F5 = back to all records
+                iv.detail_mode = False
+                if iv.checked_view:
+                    iv.checked_view = False
+            elif cmd == CMD_TOGGLE_CHECKED_VIEW:  # F6 = filter to selected
+                if not iv.detail_mode and not iv.checked_view:
+                    if not iv.toggle_checked_view():
+                        self.status_message = "No records selected (use Space to select)"
+            elif cmd == CMD_INSERT and ch == " ":
+                iv.toggle_check()
+            elif cmd == CMD_ENTER:
+                if iv.detail_mode:
+                    iv.detail_mode = False  # back to table/filtered
+                else:
+                    iv.toggle_detail()  # enter detail
+            elif cmd == CMD_MOVE_DOWN:
+                if iv.checked_view:
+                    iv.checked_move_down()
+                else:
+                    iv.move_down(vh)
+            elif cmd == CMD_MOVE_UP:
+                if iv.checked_view:
+                    iv.checked_move_up()
+                else:
+                    iv.move_up()
+            elif cmd == CMD_PAGE_DOWN:
+                if iv.checked_view:
+                    iv.checked_page_down(vh)
+                else:
+                    iv.page_down(vh)
+            elif cmd == CMD_PAGE_UP:
+                if iv.checked_view:
+                    iv.checked_page_up(vh)
+                else:
+                    iv.page_up(vh)
+            elif cmd == CMD_HOME:
+                iv.home()
+            elif cmd == CMD_END:
+                iv.end()
+            elif cmd == CMD_SAVE:
+                self._save_checked_records()
+            elif cmd in (CMD_EXIT, CMD_REFRESH, CMD_RESIZE):
+                global_handlers = {
+                    CMD_EXIT: self._exit,
+                    CMD_REFRESH: self._refresh,
+                    CMD_RESIZE: self._resize,
+                }
+                global_handlers[cmd]()
             return
 
         if cmd == CMD_TOGGLE_MD_VIEW:
@@ -332,6 +413,33 @@ class Editor:
         except OSError as e:
             self.status_message = f"Error: {e}"
 
+    def _save_checked_records(self):
+        iv = self.inv_viewer
+        if iv.checked_view:
+            records = iv.get_selected_records()
+            count = len(records)
+        else:
+            if not iv.checked:
+                self.status_message = "No records selected"
+                return
+            records = [iv.records[i] for i in sorted(iv.checked)]
+            count = len(records)
+        if count == 0:
+            self.status_message = "No records selected"
+            return
+        name = self.ui.get_input(f"Save {count} record(s) to: ")
+        if name is None or name == "":
+            self.status_message = "Cancelled"
+            return
+        try:
+            with open(name, "w") as f:
+                json.dump(records, f, indent=2)
+            self.status_message = f"Saved {count} record(s) to {name}"
+        except PermissionError:
+            self.status_message = "Error: Permission denied"
+        except OSError as e:
+            self.status_message = f"Error: {e}"
+
     def _toggle_focus(self):
         if self.focus == "editor":
             self.focus = "explorer"
@@ -369,6 +477,7 @@ class Editor:
         self.scroll_row = 0
         self.scroll_col = 0
         self.focus = "editor"
+        self.inv_viewer = InvViewer.from_file(path)
         self.md_view_mode = self._is_markdown()
         self.md_scroll_row = 0
         if self.md_view_mode:

@@ -39,6 +39,8 @@ CMD_INSERT = "insert"
 CMD_TOGGLE_EXPLORER = "toggle_explorer"
 CMD_TOGGLE_TERMINAL = "toggle_terminal"
 CMD_TOGGLE_MD_VIEW = "toggle_md_view"
+CMD_TOGGLE_CHECKED_VIEW = "toggle_checked_view"
+CMD_SPACE = "space"
 
 
 def get_command(key):
@@ -72,6 +74,7 @@ def get_command(key):
         CTRL_T: CMD_TOGGLE_EXPLORER,
         CTRL_B: CMD_TOGGLE_TERMINAL,
         curses.KEY_F5: CMD_TOGGLE_MD_VIEW,
+        curses.KEY_F6: CMD_TOGGLE_CHECKED_VIEW,
         curses.KEY_RESIZE: CMD_RESIZE,
     }
 
